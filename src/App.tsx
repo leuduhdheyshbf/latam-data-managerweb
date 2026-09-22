@@ -135,7 +135,7 @@ function App({ onLogout }: { onLogout: () => void }) {
     if (!current) return;
     const esc = (v: string) => `"${String(v ?? "").replaceAll('"', '""')}"`;
     const csv = [current.columns.map(esc).join(","), ...current.rows.map(r => current.columns.map(c => esc(r[c] || "")).join(","))].join("\n");
-    const blob = new Blob(["\\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = current.name.replace(/[^a-z0-9_-]+/gi, "_") + ".csv"; a.click(); URL.revokeObjectURL(a.href);
     notify("CSV exportado.");
@@ -144,7 +144,7 @@ function App({ onLogout }: { onLogout: () => void }) {
   async function prepareImport(file: File) {
     if (!current) return;
     try {
-      const text = (await file.text()).replace(/^\\ufeff/, "").replace(/\\r\\n/g, "\n").replace(/\\r/g, "\n");
+      const text = (await file.text()).replace(/^\ufeff/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
       const lines = text.split("\n").filter(line => line.trim() !== "");
       if (!lines.length) return notify("O arquivo está vazio.");
       const delimiter = [",", ";", "\\t", "|"].map(d => d === "\\t" ? "\t" : d)
