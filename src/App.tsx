@@ -128,17 +128,40 @@ function App({ onLogout }: { onLogout: () => void }) {
     URL.revokeObjectURL(a.href); notify("CSV exportado.");
   }
 
-  function importCsv() {
-    const input = document.createElement("input"); input.type = "file"; input.accept = ".csv,text/csv";
-    input.onchange = async () => {
-      const file = input.files?.[0]; if (!file || !current) return;
-      const text = await file.text();
-      const lines = text.replace(/^\ufeff/, "").split(/\r?\n/).filter(Boolean);
-      if (!lines.length) return;
-      const parse = (line: string) => line.split(",").map(v => v.trim().replace(/^"|"$/g, "").replaceAll('""', '"'));
-      const imported = lines.slice(1).map(line => { const vals = parse(line); const r: Row = {}; current.columns.forEach((c, i) => r[c] = vals[i] || ""); return r; });
-      persistTables(tables.map(t => t.id === current.id ? { ...t, rows: [...t.rows, ...imported] } : t));
-      notify(`${imported.length} registro(s) importado(s).`);
+  function importDataFile() {
+    const input=document.createElement("input");
+    input.type="file";
+    input.accept=".csv,.txt,text/csv,text/plain";
+    input.onchange=async()=>{
+      const file=input.files?.[0];
+      if(!file||!current)return;
+      try{
+        const text=(await file.text()).replace(/^\ufeff/,"").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+        const lines=text.split("\n").filter(line=>line.trim()!=="");
+        if(!lines.length)return notify("O arquivo está vazio.");
+        const candidates=[",",";","\\t","|"];
+        const delimiter=candidates.sort((a,b)=>lines[0].split(b).length-lines[0].split(a).length)[0];
+        const parseLine=(line:string)=>{
+          const values:string[]=[];let value="";let quoted=false;
+          for(let i=0;i<line.length;i++){
+            const ch=line[i];
+            if(ch==='"'){
+              if(quoted&&line[i+1]==='"'){value+='"';i++;}else quoted=!quoted;
+            }else if(ch===delimiter&&!quoted){values.push(value.trim());value="";}
+            else value+=ch;
+          }
+          values.push(value.trim());return values;
+        };
+        const fileColumns=parseLine(lines[0]).map((v,i)=>v||`Coluna ${i+1}`);
+        const newColumns=[...current.columns,...fileColumns.filter(c=>!current.columns.includes(c))];
+        const imported=lines.slice(1).map(line=>{
+          const values=parseLine(line);const row:Row={};
+          newColumns.forEach((column,index)=>row[column]=values[index]??"");
+          return row;
+        }).filter(row=>Object.values(row).some(Boolean));
+        persistTables(tables.map(t=>t.id===current.id?{...t,columns:newColumns,rows:[...t.rows,...imported]}:t));
+        notify(`${imported.length} registro(s) importado(s) de ${file.name}.`);
+      }catch{notify("Não foi possível ler o arquivo.");}
     };
     input.click();
   }
@@ -214,7 +237,7 @@ function App({ onLogout }: { onLogout: () => void }) {
           <div className="search"><Search/><input value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} placeholder="Pesquisar em todos os campos..." /></div>
           <div className="toolbar-actions">
             <button onClick={() => setDensity(density === "normal" ? "compact" : "normal")}><SlidersHorizontal/>{density === "normal" ? "Compacto" : "Confortável"}</button>
-            <button onClick={importCsv}><Upload/>Importar</button>
+            <button onClick={importDataFile}><Upload/>Importar CSV/TXT</button>
             <button onClick={() => setModal("columns")}><Columns3/>Colunas</button>
             <button><Filter/>Filtro</button>
           </div>
