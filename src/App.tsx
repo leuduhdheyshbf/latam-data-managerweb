@@ -33,7 +33,7 @@ function App({ onLogout }: { onLogout: () => void }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
-  const [modal, setModal] = useState<"table" | "source" | "columns" | "import" | null>(null);
+  const [modal, setModal] = useState<"table" | "source" | "columns" | "filter" | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [columns, setColumns] = useState("Nome, Status, Cargo");
@@ -43,7 +43,7 @@ function App({ onLogout }: { onLogout: () => void }) {
   const [toast, setToast] = useState("");
   const [density, setDensity] = useState<"normal" | "compact">("normal");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(25);\n  const [filterCol, setFilterCol] = useState("");\n  const [filterOp, setFilterOp] = useState<"contains" | "equals" | "starts">("contains");\n  const [filterValue, setFilterValue] = useState("");
 
   const persistTables = (v: TableDef[]) => { localStorage.setItem(TABLES_KEY, JSON.stringify(v)); setTables(v); };
   const persistSources = (v: Source[]) => { localStorage.setItem(SOURCES_KEY, JSON.stringify(v)); setSources(v); };
@@ -140,7 +140,7 @@ function App({ onLogout }: { onLogout: () => void }) {
         const lines=text.split("\n").filter(line=>line.trim()!=="");
         if(!lines.length)return notify("O arquivo está vazio.");
         const candidates=[",",";","\\t","|"];
-        const delimiter=candidates.sort((a,b)=>lines[0].split(b).length-lines[0].split(a).length)[0];
+        const delimiter=candidates.sort((a,b)=>lines[0].split(b === "\\t" ? "\t" : b).length-lines[0].split(a === "\\t" ? "\t" : a).length)[0] === "\\t" ? "\t" : candidates[0];
         const parseLine=(line:string)=>{
           const values:string[]=[];let value="";let quoted=false;
           for(let i=0;i<line.length;i++){
@@ -192,7 +192,7 @@ function App({ onLogout }: { onLogout: () => void }) {
   const filteredRows = useMemo(() => {
     if (!current) return [];
     const needle = query.toLowerCase().trim();
-    let rows = current.rows.map((row, index) => ({ row, index })).filter(x => !needle || current.columns.some(c => (x.row[c] || "").toLowerCase().includes(needle)));
+    let rows = current.rows.map((row, index) => ({ row, index })).filter(x => !needle || current.columns.some(c => (x.row[c] || "").toLowerCase().includes(needle)));\n    if (filterCol && filterValue.trim()) { const v = filterValue.toLowerCase(); rows = rows.filter(x => { const cell = (x.row[filterCol] || "").toLowerCase(); return filterOp === "equals" ? cell === v : filterOp === "starts" ? cell.startsWith(v) : cell.includes(v); }); }
     if (sort) rows.sort((a, b) => (a.row[sort.col] || "").localeCompare(b.row[sort.col] || "", "pt-BR", { numeric: true }) * (sort.dir === "asc" ? 1 : -1));
     return rows;
   }, [current, query, sort]);
@@ -239,7 +239,7 @@ function App({ onLogout }: { onLogout: () => void }) {
             <button onClick={() => setDensity(density === "normal" ? "compact" : "normal")}><SlidersHorizontal/>{density === "normal" ? "Compacto" : "Confortável"}</button>
             <button onClick={importDataFile}><Upload/>Importar CSV/TXT</button>
             <button onClick={() => setModal("columns")}><Columns3/>Colunas</button>
-            <button><Filter/>Filtro</button>
+            <button onClick={() => setModal("filter")}><Filter/>Filtro{filterCol && filterValue ? " • 1" : ""}</button>
           </div>
         </div>
         {selected.length > 0 && <div className="selectionbar"><b>{selected.length} selecionado(s)</b><button onClick={deleteRows}><Trash2/>Excluir</button><button onClick={() => setSelected([])}><X/>Limpar</button></div>}
@@ -263,11 +263,11 @@ function App({ onLogout }: { onLogout: () => void }) {
     </main>
 
     {modal && <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null); }}><div className="modal">
-      <div className="modalhead"><div><div className="eyebrow">CONFIGURAÇÃO</div><h2>{modal === "table" ? "Nova tabela" : modal === "columns" ? "Gerenciar colunas" : "Conectar fonte"}</h2><p>{modal === "table" ? "Estruture seus dados do jeito que precisar." : modal === "columns" ? "Adicione ou remova campos desta tabela." : "Conecte uma API ou fonte externa ao workspace."}</p></div><button className="close" onClick={() => setModal(null)}><X/></button></div>
+      <div className="modalhead"><div><div className="eyebrow">CONFIGURAÇÃO</div><h2>{modal === "table" ? "Nova tabela" : modal === "columns" ? "Gerenciar colunas" : modal === "filter" ? "Filtro avançado" : "Conectar fonte"}</h2><p>{modal === "table" ? "Estruture seus dados do jeito que precisar." : modal === "columns" ? "Adicione ou remova campos desta tabela." : modal === "filter" ? "Crie uma regra para reduzir a lista de registros." : "Conecte uma API ou fonte externa ao workspace."}</p></div><button className="close" onClick={() => setModal(null)}><X/></button></div>
       {modal === "table" && <><label>Nome da tabela<input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ex.: Membros"/></label><label>Descrição <span>opcional</span><input value={description} onChange={e => setDescription(e.target.value)} placeholder="Para que esta tabela serve?"/></label><label>Colunas <span>separadas por vírgula</span><input value={columns} onChange={e => setColumns(e.target.value)} placeholder="Nome, ID, Status, Cargo"/></label><div className="modal-hint"><Columns3/> Você poderá adicionar ou remover colunas depois.</div></>}
-      {modal === "columns" && current && <><div className="column-list">{current.columns.map(c => <div key={c}><span>{c}</span><button disabled={current.columns.length <= 1} onClick={() => removeColumn(c)}><Trash2/></button></div>)}</div><button className="primary full" onClick={addColumn}><Plus/>Adicionar coluna</button></>}
+      {modal === "filter" && current && <><label>Campo<select value={filterCol} onChange={e => setFilterCol(e.target.value)}><option value="">Selecione uma coluna</option>{current.columns.map(c => <option key={c} value={c}>{c}</option>)}</select></label><label>Condição<select value={filterOp} onChange={e => setFilterOp(e.target.value as typeof filterOp)}><option value="contains">Contém</option><option value="equals">É exatamente</option><option value="starts">Começa com</option></select></label><label>Valor<input autoFocus value={filterValue} onChange={e => { setFilterValue(e.target.value); setPage(1); }} placeholder="Digite o valor..." /></label><div className="modal-hint"><Filter/> Combine pesquisa e filtro para encontrar registros rapidamente.</div></>}\n      {modal === "columns" && current && <><div className="column-list">{current.columns.map(c => <div key={c}><span>{c}</span><button disabled={current.columns.length <= 1} onClick={() => removeColumn(c)}><Trash2/></button></div>)}</div><button className="primary full" onClick={addColumn}><Plus/>Adicionar coluna</button></>}
       {modal === "source" && <><label>Nome da conexão<input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ex.: Google Sheets"/></label><label>URL da fonte<input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..."/></label><label>API Key / Token <span>opcional</span><input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="Cole sua chave ou token"/></label><div className="modal-hint"><Database/> As credenciais ficam apenas neste navegador.</div></>}
-      <div className="modalactions"><button onClick={() => setModal(null)}>Cancelar</button>{modal === "source" && <button onClick={testSource} disabled={testing}>{testing ? "Testando..." : "Testar conexão"}</button>}{modal !== "columns" && <button className="primary" onClick={modal === "table" ? createTable : connectSource} disabled={testing}>{testing ? "Aguarde..." : modal === "table" ? "Criar tabela" : "Conectar"}</button>}</div>
+      <div className="modalactions"><button onClick={() => setModal(null)}>Cancelar</button>{modal === "source" && <button onClick={testSource} disabled={testing}>{testing ? "Testando..." : "Testar conexão"}</button>}{modal === "filter" && <button className="primary" onClick={() => { setPage(1); setModal(null); }}>Aplicar filtro</button>}{modal !== "columns" && modal !== "filter" && <button className="primary" onClick={modal === "table" ? createTable : connectSource} disabled={testing}>{testing ? "Aguarde..." : modal === "table" ? "Criar tabela" : "Conectar"}</button>}</div>
     </div></div>}
     {toast && <div className="toast"><Check/>{toast}</div>}
   </div>;
